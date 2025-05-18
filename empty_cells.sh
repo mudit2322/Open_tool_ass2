@@ -1,32 +1,32 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# empty_cells.sh: Count empty cells in each column of a delimited file
+# Usage: empty_cells.sh <input-file> <separator>
 
-if [ $# -ne 2 ]; then
-    echo "Usage: $0 <filename> <separator>"
-    exit 1
+if [ "$#" -ne 2 ]; then
+  echo "Usage: $0 <input-file> <separator>" >&2
+  exit 1
 fi
 
 file="$1"
 sep="$2"
 
-# Read header
-IFS="$sep" read -r -a headers < "$file"
-
-# Initialize array of counters
-declare -a counters
-for ((i = 0; i < ${#headers[@]}; i++)); do
-    counters[$i]=0
-done
-
-# Process rows
-tail -n +2 "$file" | while IFS="$sep" read -r -a fields; do
-    for ((i = 0; i < ${#headers[@]}; i++)); do
-        if [[ -z "${fields[$i]// /}" ]]; then
-            ((counters[$i]++))
-        fi
-    done
-done
-
-# Output results
-for ((i = 0; i < ${#headers[@]}; i++)); do
-    echo "${headers[$i]}: ${counters[$i]}"
-done
+awk -v FS="$sep" '
+NR == 1 {
+    n = NF
+    for (i = 1; i <= n; i++) {
+        header[i] = $i      # store column headers
+        counts[i] = 0       # initialize counts
+    }
+    next
+}
+{
+    for (i = 1; i <= n; i++) {
+        if ($i == "") counts[i]++  # increment if empty cell
+    }
+}
+END {
+    for (i = 1; i <= n; i++) {
+        print header[i] ": " counts[i]
+    }
+}
+' "$file"
