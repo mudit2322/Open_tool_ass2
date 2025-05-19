@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+
+# Check if the script received exactly 2 arguments: the input file and the field separator
+if [ "$#" -ne 2 ]; then
+  echo "Usage: $ ./empty_cells <input-file> <separator>" >&2
+  exit 1
+fi
+
+file="$1"
+sep="$2"
+
+# Check if file exists and is readable
+if [ ! -f "$file" ]; then
+  echo "Error: File '$file' does not exist." >&2
+  exit 2
+fi
+
+if [ ! -r "$file" ]; then
+  echo "Error: File '$file' is not readable." >&2
+  exit 3
+fi
+
+# Check if separator is non-empty
+if [ -z "$sep" ]; then
+  echo "Error: Separator cannot be empty." >&2
+  exit 4
+fi
+
+# Check if file is empty
+if [ ! -s "$file" ]; then
+  echo "Error: File '$file' is empty." >&2
+  exit 5
+fi
+
+awk -v FS="$sep" '
+BEGIN {
+  OFS="\t"
+  header_found = 0
+}
+
+{
+  sub(/\r$/, "")
+}
+
+NR == 1 {
+  n = NF
+  if (n == 0) {
+    print "Error: Header row is empty." > "/dev/stderr"
+    exit 6
+  }
+  for (i = 1; i <= NF; i++) {
+    gsub(/^ +| +$/, "", $i)
+    headers[i] = $i
+    empty[i] = 0
+  }
+  header_found = 1
+  next
+}
+
+{
+  if (NF != n) {
+    print "Warning: Line " NR " has " NF " fields, expected " n "." > "/dev/stderr"
+  }
+  for (i = 1; i <= n; i++) {
+    val = $i
+    gsub(/^ +| +$/, "", val)
+    if (val == "") {
+      empty[i]++
+    }
+  }
+}
+
+END {
+  if (!header_found) {
+    print "Error: No header row found." > "/dev/stderr"
+    exit 7
+  }
+  for (i = 1; i <= n; i++) {
+    col = headers[i]
+    if (col == "") {
+      col = "[Unnamed Column " i "]"
+    }
+    print col ": " empty[i]
+  }
+}
+' "$file"
