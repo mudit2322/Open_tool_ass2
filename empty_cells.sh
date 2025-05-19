@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# empty_cells.sh: Count empty cells in each column of a delimited file
+# empty_cells.sh: Count empty or whitespace-only cells per column
 # Usage: empty_cells.sh <input-file> <separator>
 
 if [ "$#" -ne 2 ]; then
@@ -11,22 +11,39 @@ file="$1"
 sep="$2"
 
 awk -v FS="$sep" '
-NR == 1 {
-    n = NF
-    for (i = 1; i <= n; i++) {
-        header[i] = $i      # store column headers
-        counts[i] = 0       # initialize counts
-    }
-    next
+BEGIN {
+  OFS="\t"
 }
 {
-    for (i = 1; i <= n; i++) {
-        if ($i == "") counts[i]++  # increment if empty cell
+  # Strip carriage returns (for Windows \r\n line endings)
+  sub(/\r$/, "")
+}
+NR == 1 {
+  # Trim and store header
+  n = NF
+  for (i = 1; i <= NF; i++) {
+    gsub(/^ +| +$/, "", $i)
+    headers[i] = $i
+    empty[i] = 0
+  }
+  next
+}
+{
+  for (i = 1; i <= n; i++) {
+    val = $i
+    gsub(/^ +| +$/, "", val)
+    if (val == "") {
+      empty[i]++
     }
+  }
 }
 END {
-    for (i = 1; i <= n; i++) {
-        print header[i] ": " counts[i]
+  for (i = 1; i <= n; i++) {
+    col = headers[i]
+    if (col == "") {
+      col = "[Unnamed Column " i "]"
     }
+    print col ": " empty[i]
+  }
 }
 ' "$file"
