@@ -1,69 +1,62 @@
 #!/usr/bin/env bash
-# empty_cells.sh: Count empty or whitespace-only cells in each column of a delimited file
-# Usage: ./empty_cells.sh <input-file> <separator>
 
-# ----------------------------
-# Check that exactly 2 arguments are provided: input file and separator
-# ----------------------------
+# Check if the script received exactly 2 arguments: the input file and the field separator
 if [ "$#" -ne 2 ]; then
   echo "Usage: $0 <input-file> <separator>" >&2
   exit 1
 fi
 
-file="$1"      # First argument is the path to the input file
-sep="$2"       # Second argument is the column separator (e.g., ";" for CSV with semicolons)
+# Store the input arguments into variables for better readability
+file="$1"
+sep="$2"
 
-# ----------------------------
-# Use awk to process the file line by line
-# ----------------------------
-awk -v FS="$sep" '                         # Set the field separator (FS) to whatever user passed (e.g., ";" or ",")
+# Use awk to process the file with the given separator
+awk -v FS="$sep" '
 BEGIN {
-  OFS="\t"                                 # Output fields separated by tab (for cleaner output)
+  # Set the output field separator to tab for consistency
+  OFS="\t"
 }
 
-# ----------------------------
-# For every line, remove carriage return at the end (for Windows-formatted files)
-# ----------------------------
 {
-  sub(/\r$/, "")                           # Removes trailing carriage return \r if present
+  # Remove trailing carriage return (in case the file has Windows line endings)
+  sub(/\r$/, "")
 }
 
-# ----------------------------
-# Process the first line (header row)
-# ----------------------------
+# Process the header row (first line)
 NR == 1 {
-  n = NF                                   # Count how many fields (columns) are in the header
+  n = NF  # Total number of fields (columns)
   for (i = 1; i <= NF; i++) {
-    gsub(/^ +| +$/, "", $i)                # Remove any leading/trailing spaces from each header
-    headers[i] = $i                        # Store the header name for column i
-    empty[i] = 0                           # Initialize empty count for column i to 0
+    # Trim spaces from each column name
+    gsub(/^ +| +$/, "", $i)
+    headers[i] = $i         # Store the column name
+    empty[i] = 0            # Initialize the empty cell counter for each column
   }
-  next                                     # Skip to the next line (don’t process the header again)
+  next  # Skip to the next line (data starts from line 2)
 }
 
-# ----------------------------
-# Process the rest of the rows (data rows)
-# ----------------------------
+# Process the data rows
 {
   for (i = 1; i <= n; i++) {
     val = $i
-    gsub(/^ +| +$/, "", val)               # Remove spaces around each cell value
+    # Trim spaces from each cell value
+    gsub(/^ +| +$/, "", val)
+    # Check if the cell is empty
     if (val == "") {
-      empty[i]++                           # If the cell is empty or only had spaces, count it as empty
+      empty[i]++
     }
   }
 }
 
-# ----------------------------
-# After reading all lines, print how many empty cells were in each column
-# ----------------------------
 END {
+  # Print the number of empty cells for each column
   for (i = 1; i <= n; i++) {
     col = headers[i]
+    # If a header was missing, assign a placeholder name
     if (col == "") {
-      col = "[Unnamed Column " i "]"       # If the header is blank, give it a placeholder name
+      col = "[Unnamed Column " i "]"
     }
-    print col ": " empty[i]                # Print column name and the count of empty cells
+    # Print the column name followed by the count of empty cells
+    print col ": " empty[i]
   }
 }
 ' "$file"
