@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # analysis: Compute popular mechanics/domains and Pearson correlations
 # Usage: ./analysis <cleaned-file>
+# Mudit mamgain 23931717
+set -euo pipefail  # Safer script: exit on error, unset var, or pipefail
 
-# Check for correct usage
+# Check if exactly one argument (the file) is provided
 if [ "$#" -ne 1 ]; then
   echo "Usage: $0 <cleaned-file>" >&2
   exit 1
@@ -10,8 +12,20 @@ fi
 
 file="$1"
 
-# Get column indices from the header line
-read mech_col dom_col year_col rating_col comp_col < <(
+# Confirm the file exists
+if [ ! -f "$file" ]; then
+  echo "Error: File '$file' does not exist." >&2
+  exit 1
+fi
+
+# Make sure the file is tab-delimited
+if ! head -1 "$file" | grep -q $'\t'; then
+  echo "Error: File '$file' does not appear to be tab-delimited." >&2
+  exit 1
+fi
+
+# Extract the column numbers for Mechanics, Domains, Year, Rating, Complexity
+read -r mech_col dom_col year_col rating_col comp_col < <(
   awk -F'\t' 'NR==1 {
     for (i=1; i<=NF; i++) {
       if ($i == "Mechanics") m = i
@@ -25,43 +39,63 @@ read mech_col dom_col year_col rating_col comp_col < <(
   }' "$file"
 )
 
-# Most popular mechanic
+# Make sure all required columns were found
+if [[ -z "${mech_col:-}" || -z "${dom_col:-}" || -z "${year_col:-}" || -z "${rating_col:-}" || -z "${comp_col:-}" ]]; then
+  echo "Error: One or more required columns (Mechanics, Domains, Year, Rating, Complexity) not found in header." >&2
+  exit 1
+fi
+
+# Find the most popular game mechanic
 awk -F'\t' -v col="$mech_col" '
-NR > 1 && $col != "" {
-  n = split($col, arr, /,\s*/)
+NR == 1 { next }  # skip header
+$col != "" {
+  n = split($col, arr, /,\s*/)  # split by comma
   for (i = 1; i <= n; i++) {
-    gsub(/^ +| +$/, "", arr[i])
-    mech[arr[i]]++
-    if (mech[arr[i]] > max) {
-      max = mech[arr[i]]
-      most = arr[i]
+    gsub(/^ +| +$/, "", arr[i])  # trim whitespace
+    if (arr[i] != "") {
+      mech[arr[i]]++
+      if (mech[arr[i]] > max) {
+        max = mech[arr[i]]
+        most = arr[i]
+      }
     }
   }
 }
 END {
-  printf "The most popular game mechanics is %s found in %d games\n", most, max
+  if (max > 0)
+    printf "The most popular game mechanics is %s found in %d games\n", most, max
+  else
+    print "No mechanics data found."
 }' "$file"
 
-# Most popular domain
+# Find the most popular game domain
 awk -F'\t' -v col="$dom_col" '
-NR > 1 && $col != "" {
+NR == 1 { next }
+$col != "" {
   n = split($col, arr, /,\s*/)
   for (i = 1; i <= n; i++) {
     gsub(/^ +| +$/, "", arr[i])
-    dom[arr[i]]++
-    if (dom[arr[i]] > max) {
-      max = dom[arr[i]]
-      most = arr[i]
+    if (arr[i] != "") {
+      dom[arr[i]]++
+      if (dom[arr[i]] > max) {
+        max = dom[arr[i]]
+        most = arr[i]
+      }
     }
   }
 }
 END {
-  printf "The most popular game domain is %s found in %d games\n", most, max
+  if (max > 0)
+    printf "The most popular game domain is %s found in %d games\n", most, max
+  else
+    print "No domain data found."
 }' "$file"
 
-# Pearson correlation: Year vs Rating
+# Calculate Pearson correlation: Year vs Rating
 awk -F'\t' -v xcol="$year_col" -v ycol="$rating_col" '
-NR > 1 && $xcol ~ /^[0-9]+$/ && $ycol ~ /^[0-9]+(\.[0-9]+)?$/ {
+NR == 1 { next }
+# Only consider rows with valid numeric year and rating
+$xcol ~ /^[0-9]+$/ && $ycol ~ /^[0-9]+(\.[0-9]+)?$/ {
   x = $xcol + 0
   y = $ycol + 0
   n++
@@ -72,15 +106,22 @@ NR > 1 && $xcol ~ /^[0-9]+$/ && $ycol ~ /^[0-9]+(\.[0-9]+)?$/ {
   sumy2 += y * y
 }
 END {
+  if (n < 2) {
+    print "Not enough data for Year vs Rating correlation."
+    exit
+  }
+  # Pearson correlation formula
   num = n * sumxy - sumx * sumy
   den = sqrt((n * sumx2 - sumx^2) * (n * sumy2 - sumy^2))
   r = (den > 0) ? num / den : 0
   printf "The correlation between the year of publication and the average rating is %.3f\n", r
 }' "$file"
 
-# Pearson correlation: Complexity vs Rating
+# Calculate Pearson correlation: Complexity vs Rating
 awk -F'\t' -v xcol="$comp_col" -v ycol="$rating_col" '
-NR > 1 && $xcol ~ /^[0-9]+(\.[0-9]+)?$/ && $ycol ~ /^[0-9]+(\.[0-9]+)?$/ {
+NR == 1 { next }
+# Only consider rows with valid numeric complexity and rating
+$xcol ~ /^[0-9]+(\.[0-9]+)?$/ && $ycol ~ /^[0-9]+(\.[0-9]+)?$/ {
   x = $xcol + 0
   y = $ycol + 0
   n++
@@ -91,6 +132,11 @@ NR > 1 && $xcol ~ /^[0-9]+(\.[0-9]+)?$/ && $ycol ~ /^[0-9]+(\.[0-9]+)?$/ {
   sumy2 += y * y
 }
 END {
+  if (n < 2) {
+    print "Not enough data for Complexity vs Rating correlation."
+    exit
+  }
+  # Pearson correlation formula
   num = n * sumxy - sumx * sumy
   den = sqrt((n * sumx2 - sumx^2) * (n * sumy2 - sumy^2))
   r = (den > 0) ? num / den : 0
