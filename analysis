@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# analysis: Compute popular mechanics/domains and Pearson correlations
+# Usage: ./analysis <cleaned-file>
+
+# Check for correct usage
+if [ "$#" -ne 1 ]; then
+  echo "Usage: $0 <cleaned-file>" >&2
+  exit 1
+fi
+
+file="$1"
+
+# Get column indices from the header line
+read mech_col dom_col year_col rating_col comp_col < <(
+  awk -F'\t' 'NR==1 {
+    for (i=1; i<=NF; i++) {
+      if ($i == "Mechanics") m = i
+      if ($i == "Domains") d = i
+      if ($i ~ /Year/) y = i
+      if ($i ~ /Rating/) r = i
+      if ($i ~ /Complexity/) c = i
+    }
+    print m, d, y, r, c
+    exit
+  }' "$file"
+)
+
+# Most popular mechanic
+awk -F'\t' -v col="$mech_col" '
+NR > 1 && $col != "" {
+  n = split($col, arr, /,\s*/)
+  for (i = 1; i <= n; i++) {
+    gsub(/^ +| +$/, "", arr[i])
+    mech[arr[i]]++
+    if (mech[arr[i]] > max) {
+      max = mech[arr[i]]
+      most = arr[i]
+    }
+  }
+}
+END {
+  printf "The most popular game mechanics is %s found in %d games\n", most, max
+}' "$file"
+
+# Most popular domain
+awk -F'\t' -v col="$dom_col" '
+NR > 1 && $col != "" {
+  n = split($col, arr, /,\s*/)
+  for (i = 1; i <= n; i++) {
+    gsub(/^ +| +$/, "", arr[i])
+    dom[arr[i]]++
+    if (dom[arr[i]] > max) {
+      max = dom[arr[i]]
+      most = arr[i]
+    }
+  }
+}
+END {
+  printf "The most popular game domain is %s found in %d games\n", most, max
+}' "$file"
+
+# Pearson correlation: Year vs Rating
+awk -F'\t' -v xcol="$year_col" -v ycol="$rating_col" '
+NR > 1 && $xcol ~ /^[0-9]+$/ && $ycol ~ /^[0-9]+(\.[0-9]+)?$/ {
+  x = $xcol + 0
+  y = $ycol + 0
+  n++
+  sumx += x
+  sumy += y
+  sumxy += x * y
+  sumx2 += x * x
+  sumy2 += y * y
+}
+END {
+  num = n * sumxy - sumx * sumy
+  den = sqrt((n * sumx2 - sumx^2) * (n * sumy2 - sumy^2))
+  r = (den > 0) ? num / den : 0
+  printf "The correlation between the year of publication and the average rating is %.3f\n", r
+}' "$file"
+
+# Pearson correlation: Complexity vs Rating
+awk -F'\t' -v xcol="$comp_col" -v ycol="$rating_col" '
+NR > 1 && $xcol ~ /^[0-9]+(\.[0-9]+)?$/ && $ycol ~ /^[0-9]+(\.[0-9]+)?$/ {
+  x = $xcol + 0
+  y = $ycol + 0
+  n++
+  sumx += x
+  sumy += y
+  sumxy += x * y
+  sumx2 += x * x
+  sumy2 += y * y
+}
+END {
+  num = n * sumxy - sumx * sumy
+  den = sqrt((n * sumx2 - sumx^2) * (n * sumy2 - sumy^2))
+  r = (den > 0) ? num / den : 0
+  printf "The correlation between the complexity of a game and its average rating is %.3f\n", r
+}' "$file"
